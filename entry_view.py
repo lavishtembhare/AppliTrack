@@ -19,7 +19,7 @@ class EntryView(ctk.CTkScrollableFrame):
         ).pack(anchor="w")
 
         ctk.CTkLabel(
-            title_box, text="Configure target role, application channel, and credential email into your encrypted registry.",
+            title_box, text="Configure target role, application conduit, and credential email into your encrypted registry.",
             font=ctk.CTkFont(size=12),
             text_color="#64748b"
         ).pack(anchor="w")
@@ -43,7 +43,7 @@ class EntryView(ctk.CTkScrollableFrame):
         self.role_entry.grid(row=1, column=1, padx=25, pady=(0, 16), sticky="ew")
 
         # Field 3: Portal
-        ctk.CTkLabel(self.form_card, text="APPLICATION PIPELINE CHANNEL", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#94a3b8").grid(row=2, column=0, padx=25, pady=(0, 4), sticky="w")
+        ctk.CTkLabel(self.form_card, text="APPLICATION PIPELINE CONDUIT", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#94a3b8").grid(row=2, column=0, padx=25, pady=(0, 4), sticky="w")
         self.portal_menu = ctk.CTkOptionMenu(self.form_card, height=38, fg_color="#0a0b12", button_color="#1e2235")
         self.portal_menu.grid(row=3, column=0, padx=25, pady=(0, 16), sticky="ew")
 
@@ -107,18 +107,25 @@ class EntryView(ctk.CTkScrollableFrame):
         self.notes_entry.delete(0, "end")
         self.status_menu.set("Applied")
         self.set_today()
+        self.refresh_dropdowns()
 
     def refresh_dropdowns(self):
+        # Fetch current defaults from SQLite
+        saved_portal = self.db.get_setting("default_portal", "LinkedIn")
+        saved_email = self.db.get_setting("default_email", "")
+
         portals = self.db.get_portals()
         self.portal_menu.configure(values=portals if portals else ["Other"])
-        if "LinkedIn" in portals:
-            self.portal_menu.set("LinkedIn")
+        if saved_portal in portals:
+            self.portal_menu.set(saved_portal)
         elif portals:
             self.portal_menu.set(portals[0])
 
         emails = self.db.get_emails()
         self.email_menu.configure(values=emails if emails else ["None"])
-        if emails:
+        if saved_email in emails:
+            self.email_menu.set(saved_email)
+        elif emails:
             self.email_menu.set(emails[0])
         else:
             self.email_menu.set("None")
