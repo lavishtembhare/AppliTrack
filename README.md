@@ -1,8 +1,9 @@
 <div align="center">
 
-<!-- ANIMATED TYPING HEADER -->
+<!-- APP ICON & ANIMATED TYPING HEADER -->
+<h1>💼</h1>
 <a href="https://github.com/yourusername/applitrack">
-  <img src="https://readme-typing-svg.demolab.com?font=Consolas&size=26&pause=1000&color=00F0FF&center=true&vCenter=true&width=680&lines=💼+APPLITRACK+:+CAREER+OS;EXECUTIVE+JOB+APPLICATION+ENGINE;PIPELINE+TELEMETRY+%26+FUNNEL+ANALYTICS;ZERO-CLOUD+ENCRYPTED+SQLITE+STORAGE" alt="AppliTrack Dynamic Typing Header" />
+  <img src="https://readme-typing-svg.demolab.com?font=Consolas&size=26&pause=1000&color=00F0FF&center=true&vCenter=true&width=680&lines=APPLITRACK+:+CAREER+OS;EXECUTIVE+JOB+APPLICATION+ENGINE;PIPELINE+TELEMETRY+AND+FUNNEL+ANALYTICS;ZERO-CLOUD+ENCRYPTED+SQLITE+STORAGE" alt="AppliTrack Dynamic Typing Header" />
 </a>
 
 <p align="center">
