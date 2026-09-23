@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 import customtkinter as ctk
 import pandas as pd
@@ -22,7 +23,7 @@ class SettingsView(ctk.CTkScrollableFrame):
         ).pack(anchor="w")
 
         ctk.CTkLabel(
-            title_box, text="Configure target conduits, credential endpoints, and cryptographic exports.",
+            title_box, text="Configure target conduits, credential endpoints, and predetermined automated exports.",
             font=ctk.CTkFont(size=12),
             text_color="#64748b"
         ).pack(anchor="w")
@@ -31,7 +32,7 @@ class SettingsView(ctk.CTkScrollableFrame):
         cards_grid.pack(fill="x", padx=40, pady=(0, 20))
         cards_grid.grid_columnconfigure((0, 1), weight=1)
 
-        # Left Card: Portals
+        # ----------------- LEFT: PORTAL MANAGER -----------------
         portal_card = ctk.CTkFrame(cards_grid, fg_color="#11131e", corner_radius=14, border_width=1, border_color="#1e2235")
         portal_card.grid(row=0, column=0, padx=(0, 10), sticky="nsew")
 
@@ -46,10 +47,10 @@ class SettingsView(ctk.CTkScrollableFrame):
 
         ctk.CTkButton(p_input_box, text="+ Add", width=65, font=ctk.CTkFont(family="Consolas", weight="bold"), fg_color="#6366f1", hover_color="#4f46e5", command=self.add_portal_action).pack(side="right")
 
-        self.portal_scroll = ctk.CTkScrollableFrame(portal_card, height=220, fg_color="#0a0b12", corner_radius=8)
+        self.portal_scroll = ctk.CTkScrollableFrame(portal_card, height=200, fg_color="#0a0b12", corner_radius=8)
         self.portal_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        # Right Card: Emails
+        # ----------------- RIGHT: EMAIL MANAGER -----------------
         email_card = ctk.CTkFrame(cards_grid, fg_color="#11131e", corner_radius=14, border_width=1, border_color="#1e2235")
         email_card.grid(row=0, column=1, padx=(10, 0), sticky="nsew")
 
@@ -64,26 +65,58 @@ class SettingsView(ctk.CTkScrollableFrame):
 
         ctk.CTkButton(e_input_box, text="+ Add", width=65, font=ctk.CTkFont(family="Consolas", weight="bold"), fg_color="#6366f1", hover_color="#4f46e5", command=self.add_email_action).pack(side="right")
 
-        self.email_scroll = ctk.CTkScrollableFrame(email_card, height=220, fg_color="#0a0b12", corner_radius=8)
+        self.email_scroll = ctk.CTkScrollableFrame(email_card, height=200, fg_color="#0a0b12", corner_radius=8)
         self.email_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        # Bottom Card: Data
+        # ----------------- BOTTOM: PREDECIDED EXPORT & ARCHIVE -----------------
         data_card = ctk.CTkFrame(self, fg_color="#11131e", corner_radius=14, border_width=1, border_color="#1e2235")
         data_card.pack(fill="x", padx=40, pady=(0, 30))
 
-        ctk.CTkLabel(data_card, text="💾 EXPORT & ARCHIVE UTILITIES", font=ctk.CTkFont(family="Consolas", size=12, weight="bold"), text_color="#00f5a0").pack(anchor="w", padx=20, pady=(20, 2))
-        ctk.CTkLabel(data_card, text="Snapshot pipeline dataset or purge database records.", font=ctk.CTkFont(size=11), text_color="#64748b").pack(anchor="w", padx=20, pady=(0, 16))
+        ctk.CTkLabel(data_card, text="💾 PREDECIDED EXPORT PATH & ARCHIVE", font=ctk.CTkFont(family="Consolas", size=12, weight="bold"), text_color="#00f5a0").pack(anchor="w", padx=20, pady=(20, 2))
+        ctk.CTkLabel(data_card, text="Automated destination where Excel spreadsheets are saved immediately without popups.", font=ctk.CTkFont(size=11), text_color="#64748b").pack(anchor="w", padx=20, pady=(0, 12))
 
+        # Predecided Path Row
+        path_box = ctk.CTkFrame(data_card, fg_color="transparent")
+        path_box.pack(fill="x", padx=20, pady=(0, 16))
+
+        default_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exports")
+        current_dir = self.db.get_setting("export_dir", default_dir)
+
+        self.path_entry = ctk.CTkEntry(
+            path_box, height=36,
+            fg_color="#0a0b12", border_color="#1e2235",
+            font=ctk.CTkFont(family="Consolas", size=11)
+        )
+        self.path_entry.insert(0, current_dir)
+        self.path_entry.configure(state="readonly")
+        self.path_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        ctk.CTkButton(
+            path_box, text="Change Folder", width=110, height=36,
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            fg_color="#1e2235", hover_color="#2b3149", text_color="#f8fafc",
+            command=self.choose_export_directory
+        ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            path_box, text="Open Folder", width=100, height=36,
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            fg_color="#1e2235", hover_color="#2b3149", text_color="#f8fafc",
+            command=self.open_export_directory
+        ).pack(side="left")
+
+        # Action Buttons
         action_box = ctk.CTkFrame(data_card, fg_color="transparent")
         action_box.pack(fill="x", padx=20, pady=(0, 20))
 
-        ctk.CTkButton(
-            action_box, text="⚡ Export Repository (CSV / Excel)",
+        self.export_btn = ctk.CTkButton(
+            action_box, text="⚡ Instant Export to Excel (.xlsx)",
             fg_color="#0e2a22", hover_color="#144236", text_color="#00f5a0",
             border_width=1, border_color="#184e3f",
             height=38, font=ctk.CTkFont(family="Consolas", weight="bold"),
             command=self.export_records
-        ).pack(side="left", padx=(0, 15))
+        )
+        self.export_btn.pack(side="left", padx=(0, 15))
 
         ctk.CTkButton(
             action_box, text="⚠️ Wipe Entire Database",
@@ -95,6 +128,63 @@ class SettingsView(ctk.CTkScrollableFrame):
 
         self.refresh_portals_list()
         self.refresh_emails_list()
+
+    def choose_export_directory(self):
+        current = self.path_entry.get()
+        new_dir = filedialog.askdirectory(initialdir=current, title="Select Predecided Export Directory")
+        if new_dir:
+            self.db.set_setting("export_dir", new_dir)
+            self.path_entry.configure(state="normal")
+            self.path_entry.delete(0, "end")
+            self.path_entry.insert(0, new_dir)
+            self.path_entry.configure(state="readonly")
+            messagebox.showinfo("Export Path Updated", f"Predecided export path saved:\n\n{new_dir}")
+
+    def open_export_directory(self):
+        target_dir = self.path_entry.get().strip()
+        os.makedirs(target_dir, exist_ok=True)
+        try:
+            os.startfile(target_dir)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open directory:\n{str(e)}")
+
+    def export_records(self):
+        df = self.db.get_all_applications()
+        if df.empty:
+            messagebox.showinfo("Export", "No application records available to export.")
+            return
+
+        export_dir = self.path_entry.get().strip()
+        os.makedirs(export_dir, exist_ok=True)
+
+        filename = f"AppliTrack_Export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        full_filepath = os.path.join(export_dir, filename)
+
+        try:
+            # Clean columns for display
+            export_df = df.rename(columns={
+                "company": "Company",
+                "role": "Role",
+                "date_applied": "Date Applied",
+                "status": "Pipeline Status",
+                "portal": "Applied Through",
+                "applied_email": "Applicant Email",
+                "notes": "Notes / URL"
+            })
+            export_df.to_excel(full_filepath, index=False, engine="openpyxl")
+
+            self.export_btn.configure(text="✔ EXPORTED!", fg_color="#00f5a0", text_color="#000000")
+            self.after(1500, lambda: self.export_btn.configure(text="⚡ Instant Export to Excel (.xlsx)", fg_color="#0e2a22", text_color="#00f5a0"))
+
+            confirm = messagebox.askyesno(
+                "Export Complete",
+                f"Successfully generated Excel record:\n\n{filename}\n\nLocation:\n{export_dir}\n\nWould you like to open the export folder now?"
+            )
+            if confirm:
+                os.startfile(export_dir)
+
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to save Excel file:\n{str(e)}")
 
     def refresh_portals_list(self):
         for w in self.portal_widgets:
@@ -164,27 +254,6 @@ class SettingsView(ctk.CTkScrollableFrame):
             self.db.delete_email(email_str)
             self.refresh_emails_list()
             self.on_change_callback()
-
-    def export_records(self):
-        df = self.db.get_all_applications()
-        if df.empty:
-            messagebox.showinfo("Export", "No applications logged to export.")
-            return
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV File", "*.csv"), ("Excel Spreadsheet", "*.xlsx")],
-            initialfile=f"AppliTrack_Export_{datetime.now().strftime('%Y%m%d')}.csv"
-        )
-        if path:
-            try:
-                if path.endswith(".xlsx"):
-                    df.to_excel(path, index=False)
-                else:
-                    df.to_csv(path, index=False)
-                messagebox.showinfo("AppliTrack", f"Exported {len(df)} records successfully!")
-            except Exception as e:
-                messagebox.showerror("Export Error", str(e))
 
     def clear_all_data(self):
         if messagebox.askyesno("Confirm Wipe", "⚠️ Wipe all applications from SQLite database?"):

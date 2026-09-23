@@ -1,8 +1,11 @@
+import os
 import sqlite3
 import pandas as pd
 
+DEFAULT_EXPORT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exports")
+
 class DatabaseManager:
-    """Handles SQLite storage for job applications, portals, emails, and settings."""
+    """Handles SQLite storage for job applications, portals, emails, and system settings."""
     def __init__(self, db_path="applitrack.db"):
         self.db_path = db_path
         self.init_db()
@@ -36,11 +39,19 @@ class DatabaseManager:
                 )
             """)
 
-            # Emails Table (User can add / delete)
+            # Emails Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS emails (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     email TEXT UNIQUE NOT NULL
+                )
+            """)
+
+            # System Settings Table (Stores predecided path, etc.)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
                 )
             """)
 
@@ -58,6 +69,23 @@ class DatabaseManager:
                 for em in default_emails:
                     cursor.execute("INSERT OR IGNORE INTO emails (email) VALUES (?)", (em,))
 
+            # Default Predecided Export Directory
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('export_dir', ?)", (DEFAULT_EXPORT_PATH,))
+
+            conn.commit()
+
+    # --- System Settings (Predecided Path) ---
+    def get_setting(self, key, default=""):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else default
+
+    def set_setting(self, key, value):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
             conn.commit()
 
     # --- Portal Management ---
