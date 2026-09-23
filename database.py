@@ -56,25 +56,17 @@ class DatabaseManager:
                 )
             """)
 
-            # Default Portals
-            cursor.execute("SELECT COUNT(*) FROM portals")
-            if cursor.fetchone()[0] == 0:
-                defaults = ["LinkedIn", "Career Portal", "Indeed", "Glassdoor", "Wellfound", "Referral", "Cold Email", "Other"]
-                for p in defaults:
-                    cursor.execute("INSERT OR IGNORE INTO portals (name) VALUES (?)", (p,))
+            # Auto-purge any previously generated dummy emails
+            cursor.execute("DELETE FROM emails WHERE email IN ('primary.work@gmail.com', 'career.applicant@outlook.com')")
 
-            # Default Emails
-            cursor.execute("SELECT COUNT(*) FROM emails")
-            if cursor.fetchone()[0] == 0:
-                default_emails = ["primary.work@gmail.com", "career.applicant@outlook.com"]
-                for em in default_emails:
-                    cursor.execute("INSERT OR IGNORE INTO emails (email) VALUES (?)", (em,))
-
-            # Default Settings
+            # Default Settings (Without dummy emails)
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('export_dir', ?)", (DEFAULT_EXPORT_PATH,))
-            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_portal', 'LinkedIn')")
-            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_email', 'primary.work@gmail.com')")
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_portal', '')")
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_email', '')")
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('sort_order', 'DESC')")
+
+            # If default_email was pointing to the dummy email, clear it
+            cursor.execute("UPDATE settings SET value = '' WHERE key = 'default_email' AND value = 'primary.work@gmail.com'")
 
             conn.commit()
 
@@ -98,7 +90,7 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM portals ORDER BY name ASC")
             rows = cursor.fetchall()
-            return [r[0] for r in rows] if rows else ["Career Portal", "LinkedIn"]
+            return [r[0] for r in rows] if rows else []
 
     def add_portal(self, name):
         name = name.strip()
@@ -139,7 +131,7 @@ class DatabaseManager:
             conn.commit()
 
     # --- Applications CRUD ---
-    def add_application(self, company, role, date_applied, status, portal="LinkedIn", applied_email="", notes=""):
+    def add_application(self, company, role, date_applied, status, portal="", applied_email="", notes=""):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -169,7 +161,6 @@ class DatabaseManager:
             conn.commit()
 
     def get_all_applications(self, sort_order=None):
-        """Fetches applications ordered according to user preference (ASC or DESC)."""
         if sort_order is None:
             sort_order = self.get_setting("sort_order", "DESC").upper()
         
@@ -179,7 +170,6 @@ class DatabaseManager:
             return pd.read_sql_query(query, conn)
 
     def get_applications_for_export(self):
-        """Always fetches applications sorted by id ascending (1, 2, 3...) for Excel export."""
         with self.get_connection() as conn:
             return pd.read_sql_query("SELECT * FROM applications ORDER BY id ASC", conn)
 
@@ -232,9 +222,9 @@ class DatabaseManager:
                         matched_status = vs
                         break
 
-                portal_val = str(row[col_map["portal"]]).strip() if "portal" in col_map and pd.notna(row[col_map["portal"]]) else "LinkedIn"
-                if portal_val.lower() == "nan" or not portal_val:
-                    portal_val = "LinkedIn"
+                portal_val = str(row[col_map["portal"]]).strip() if "portal" in col_map and pd.notna(row[col_map["portal"]]) else ""
+                if portal_val.lower() == "nan":
+                    portal_val = ""
 
                 email_val = str(row[col_map["email"]]).strip() if "email" in col_map and pd.notna(row[col_map["email"]]) else ""
                 if email_val.lower() == "nan":

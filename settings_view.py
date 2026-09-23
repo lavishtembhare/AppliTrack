@@ -104,12 +104,12 @@ class SettingsView(ctk.CTkScrollableFrame):
         e_input_box = ctk.CTkFrame(email_card, fg_color="transparent")
         e_input_box.pack(fill="x", padx=20, pady=(0, 12))
 
-        self.new_email_entry = ctk.CTkEntry(e_input_box, placeholder_text="applicant@domain.com", fg_color="#0a0d16", border_color="#1e2235")
+        self.new_email_entry = ctk.CTkEntry(e_input_box, placeholder_text="applicant@domain.com", fg_color="#0a0b12", border_color="#1e2235")
         self.new_email_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         ctk.CTkButton(e_input_box, text="+ Add", width=65, font=ctk.CTkFont(family="Consolas", weight="bold"), fg_color="#6366f1", hover_color="#4f46e5", command=self.add_email_action).pack(side="right")
 
-        self.email_scroll = ctk.CTkScrollableFrame(email_card, height=180, fg_color="#0a0d16", corner_radius=8)
+        self.email_scroll = ctk.CTkScrollableFrame(email_card, height=180, fg_color="#0a0b12", corner_radius=8)
         self.email_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         # ----------------- BOTTOM CARD: PREDECIDED EXPORT & INGESTION -----------------
@@ -179,16 +179,20 @@ class SettingsView(ctk.CTkScrollableFrame):
         self.refresh_emails_list()
 
     def save_sort_order(self, selection):
-        order_key = "DESC" if "Descending" in selection else "ASC"
+        order_key = "DESC" if "Newest" in selection else "ASC"
         self.db.set_setting("sort_order", order_key)
         self.on_change_callback()
 
     def save_default_portal(self, selected_portal):
-        self.db.set_setting("default_portal", selected_portal)
+        val = "" if selected_portal == "None" else selected_portal.strip()
+        self.db.set_setting("default_portal", val)
+        self.refresh_portals_list()
         self.on_change_callback()
 
     def save_default_email(self, selected_email):
-        self.db.set_setting("default_email", selected_email)
+        val = "" if selected_email == "None" else selected_email.strip()
+        self.db.set_setting("default_email", val)
+        self.refresh_emails_list()
         self.on_change_callback()
 
     def choose_export_directory(self):
@@ -211,7 +215,6 @@ class SettingsView(ctk.CTkScrollableFrame):
             messagebox.showerror("Error", f"Could not open directory:\n{str(e)}")
 
     def export_records(self):
-        # Fetch records sorted by ID ascending
         df = self.db.get_applications_for_export()
         if df.empty:
             messagebox.showinfo("Export", "No application records available to export.")
@@ -224,15 +227,12 @@ class SettingsView(ctk.CTkScrollableFrame):
         full_filepath = os.path.join(export_dir, filename)
 
         try:
-            # Generate sequential ID (1, 2, 3, 4, 5...)
             export_df = df.copy()
             export_df["#"] = list(range(1, len(export_df) + 1))
 
-            # Reorder columns with '#' first
             column_order = ["#", "company", "role", "date_applied", "status", "portal", "applied_email", "notes"]
             export_df = export_df[column_order]
 
-            # Rename to clean executive headers
             export_df = export_df.rename(columns={
                 "#": "ID",
                 "company": "Company",
@@ -297,29 +297,58 @@ class SettingsView(ctk.CTkScrollableFrame):
         self.portal_widgets.clear()
 
         portals = self.db.get_portals()
-        saved_default = self.db.get_setting("default_portal", "LinkedIn")
+        saved_default = self.db.get_setting("default_portal", "").strip()
 
-        self.default_portal_menu.configure(values=portals if portals else ["Other"])
-        if saved_default in portals:
-            self.default_portal_menu.set(saved_default)
-        elif portals:
-            self.default_portal_menu.set(portals[0])
-            self.db.set_setting("default_portal", portals[0])
+        if portals:
+            self.default_portal_menu.configure(values=portals)
+            if saved_default in portals:
+                self.default_portal_menu.set(saved_default)
+            else:
+                saved_default = portals[0]
+                self.default_portal_menu.set(saved_default)
+                self.db.set_setting("default_portal", saved_default)
+        else:
+            saved_default = ""
+            self.default_portal_menu.configure(values=["None"])
+            self.default_portal_menu.set("None")
+            self.db.set_setting("default_portal", "")
+
+        if not portals:
+            lbl = ctk.CTkLabel(self.portal_scroll, text="// NO CONDUITS CONFIGURED", font=ctk.CTkFont(family="Consolas", size=10), text_color="#64748b")
+            lbl.pack(pady=20)
+            self.portal_widgets.append(lbl)
+            return
 
         for p in portals:
             row = ctk.CTkFrame(self.portal_scroll, fg_color="#11131e", corner_radius=6)
             row.pack(fill="x", pady=2, padx=4)
             self.portal_widgets.append(row)
 
-            is_def = (p == saved_default)
+            is_def = (p.strip() == saved_default)
             display_text = f"🌐 {p} (Default)" if is_def else f"🌐 {p}"
             text_color = "#00f0ff" if is_def else "#f8fafc"
 
-            ctk.CTkLabel(row, text=display_text, font=ctk.CTkFont(family="Consolas", size=11, weight="bold"), text_color=text_color).pack(side="left", padx=10, pady=6)
-            ctk.CTkButton(
+            ctk.CTkLabel(
+                row, text=display_text,
+                font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+                text_color=text_color
+            ).pack(side="left", padx=10, pady=6)
+
+            del_btn = ctk.CTkButton(
                 row, text="✕", width=24, height=24, fg_color="#1e2235", hover_color="#ef4444",
                 command=lambda name=p: self.delete_portal_action(name)
-            ).pack(side="right", padx=6, pady=4)
+            )
+            del_btn.pack(side="right", padx=6, pady=4)
+
+            # Quick "Make Default" action button
+            if not is_def:
+                set_def_btn = ctk.CTkButton(
+                    row, text="Set Default", width=75, height=24,
+                    font=ctk.CTkFont(family="Consolas", size=10),
+                    fg_color="#181c2b", hover_color="#2b3149", text_color="#94a3b8",
+                    command=lambda name=p: self.save_default_portal(name)
+                )
+                set_def_btn.pack(side="right", padx=(0, 4), pady=4)
 
     def add_portal_action(self):
         name = self.new_portal_entry.get().strip()
@@ -327,16 +356,18 @@ class SettingsView(ctk.CTkScrollableFrame):
             messagebox.showwarning("Warning", "Conduit name cannot be empty.")
             return
         self.db.add_portal(name)
+        if not self.db.get_setting("default_portal", "").strip():
+            self.db.set_setting("default_portal", name)
         self.new_portal_entry.delete(0, "end")
         self.refresh_portals_list()
         self.on_change_callback()
 
     def delete_portal_action(self, name):
-        if len(self.db.get_portals()) <= 1:
-            messagebox.showwarning("Notice", "At least one conduit must remain registered.")
-            return
         if messagebox.askyesno("Confirm", f"Remove '{name}'?"):
             self.db.delete_portal(name)
+            if self.db.get_setting("default_portal", "").strip() == name:
+                portals = self.db.get_portals()
+                self.db.set_setting("default_portal", portals[0] if portals else "")
             self.refresh_portals_list()
             self.on_change_callback()
 
@@ -347,31 +378,58 @@ class SettingsView(ctk.CTkScrollableFrame):
         self.email_widgets.clear()
 
         emails = self.db.get_emails()
-        saved_default = self.db.get_setting("default_email", "")
+        saved_default = self.db.get_setting("default_email", "").strip()
 
-        self.default_email_menu.configure(values=emails if emails else ["None"])
-        if saved_default in emails:
-            self.default_email_menu.set(saved_default)
-        elif emails:
-            self.default_email_menu.set(emails[0])
-            self.db.set_setting("default_email", emails[0])
+        if emails:
+            self.default_email_menu.configure(values=emails)
+            if saved_default in emails:
+                self.default_email_menu.set(saved_default)
+            else:
+                saved_default = emails[0]
+                self.default_email_menu.set(saved_default)
+                self.db.set_setting("default_email", saved_default)
         else:
+            saved_default = ""
+            self.default_email_menu.configure(values=["None"])
             self.default_email_menu.set("None")
+            self.db.set_setting("default_email", "")
+
+        if not emails:
+            lbl = ctk.CTkLabel(self.email_scroll, text="// NO CREDENTIAL EMAILS CONFIGURED", font=ctk.CTkFont(family="Consolas", size=10), text_color="#64748b")
+            lbl.pack(pady=20)
+            self.email_widgets.append(lbl)
+            return
 
         for e in emails:
             row = ctk.CTkFrame(self.email_scroll, fg_color="#11131e", corner_radius=6)
             row.pack(fill="x", pady=2, padx=4)
             self.email_widgets.append(row)
 
-            is_def = (e == saved_default)
+            is_def = (e.strip() == saved_default)
             display_text = f"✉️ {e} (Default)" if is_def else f"✉️ {e}"
             text_color = "#a855f7" if is_def else "#f8fafc"
 
-            ctk.CTkLabel(row, text=display_text, font=ctk.CTkFont(family="Consolas", size=11, weight="bold"), text_color=text_color).pack(side="left", padx=10, pady=6)
-            ctk.CTkButton(
+            ctk.CTkLabel(
+                row, text=display_text,
+                font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+                text_color=text_color
+            ).pack(side="left", padx=10, pady=6)
+
+            del_btn = ctk.CTkButton(
                 row, text="✕", width=24, height=24, fg_color="#1e2235", hover_color="#ef4444",
                 command=lambda email=e: self.delete_email_action(email)
-            ).pack(side="right", padx=6, pady=4)
+            )
+            del_btn.pack(side="right", padx=6, pady=4)
+
+            # Quick "Make Default" action button
+            if not is_def:
+                set_def_btn = ctk.CTkButton(
+                    row, text="Set Default", width=75, height=24,
+                    font=ctk.CTkFont(family="Consolas", size=10),
+                    fg_color="#181c2b", hover_color="#2b3149", text_color="#94a3b8",
+                    command=lambda email=e: self.save_default_email(email)
+                )
+                set_def_btn.pack(side="right", padx=(0, 4), pady=4)
 
     def add_email_action(self):
         email_str = self.new_email_entry.get().strip()
@@ -379,6 +437,8 @@ class SettingsView(ctk.CTkScrollableFrame):
             messagebox.showwarning("Warning", "Valid email address format required.")
             return
         self.db.add_email(email_str)
+        if not self.db.get_setting("default_email", "").strip():
+            self.db.set_setting("default_email", email_str)
         self.new_email_entry.delete(0, "end")
         self.refresh_emails_list()
         self.on_change_callback()
@@ -386,6 +446,9 @@ class SettingsView(ctk.CTkScrollableFrame):
     def delete_email_action(self, email_str):
         if messagebox.askyesno("Confirm", f"Remove '{email_str}'?"):
             self.db.delete_email(email_str)
+            if self.db.get_setting("default_email", "").strip() == email_str:
+                emails = self.db.get_emails()
+                self.db.set_setting("default_email", emails[0] if emails else "")
             self.refresh_emails_list()
             self.on_change_callback()
 
