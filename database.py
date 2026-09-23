@@ -1,10 +1,9 @@
 import sqlite3
-from datetime import datetime
 import pandas as pd
 
 class DatabaseManager:
-    """Handles SQLite storage for job applications and settings."""
-    def __init__(self, db_path="job_tracker.db"):
+    """Handles SQLite storage for job applications, portals, and settings."""
+    def __init__(self, db_path="applitrack.db"):
         self.db_path = db_path
         self.init_db()
 
@@ -14,6 +13,8 @@ class DatabaseManager:
     def init_db(self):
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            
+            # Applications Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS applications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,33 +22,69 @@ class DatabaseManager:
                     role TEXT NOT NULL,
                     date_applied TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'Applied',
+                    portal TEXT NOT NULL DEFAULT 'LinkedIn',
+                    applied_email TEXT DEFAULT '',
                     notes TEXT
                 )
             """)
 
-            # Pre-populate sample entries if empty
-            cursor.execute("SELECT COUNT(*) FROM applications")
-            if cursor.fetchone()[0] == 0:
-                sample_data = [
-                    ("Google", "Data Analyst", "2026-08-12", "Interview", "Round 2 scheduled"),
-                    ("Notion", "Data Scientist", "2026-08-05", "Applied", "Referral via LinkedIn"),
-                    ("Airbnb", "Analyst", "2026-07-28", "Rejected", "Resume screened out"),
-                    ("Spotify", "BI Analyst", "2026-07-20", "Interview", "Take-home test done"),
-                    ("Amazon", "Data Analyst", "2026-07-15", "Applied", "Online assessment completed"),
-                    ("Microsoft", "Data Engineer", "2026-07-10", "Offer", "Offer package received"),
-                ]
-                cursor.executemany(
-                    "INSERT INTO applications (company, role, date_applied, status, notes) VALUES (?, ?, ?, ?, ?)",
-                    sample_data
+            # Portals Table (User can add / delete)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS portals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL
                 )
+            """)
+
+            # Automatic Schema Migration (for existing databases)
+            cursor.execute("PRAGMA table_info(applications)")
+            existing_cols = [col[1] for col in cursor.fetchall()]
+            if "portal" not in existing_cols:
+                cursor.execute("ALTER TABLE applications ADD COLUMN portal TEXT DEFAULT 'LinkedIn'")
+            if "applied_email" not in existing_cols:
+                cursor.execute("ALTER TABLE applications ADD COLUMN applied_email TEXT DEFAULT ''")
+
+            # Default Portals
+            cursor.execute("SELECT COUNT(*) FROM portals")
+            if cursor.fetchone()[0] == 0:
+                defaults = ["LinkedIn", "Career Portal", "Indeed", "Glassdoor", "Wellfound", "Referral", "Cold Email", "Other"]
+                for p in defaults:
+                    cursor.execute("INSERT OR IGNORE INTO portals (name) VALUES (?)", (p,))
+
             conn.commit()
 
-    def add_application(self, company, role, date_applied, status, notes=""):
+    # --- Portal Management ---
+    def get_portals(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM portals ORDER BY name ASC")
+            rows = cursor.fetchall()
+            return [r[0] for r in rows] if rows else ["Career Portal", "LinkedIn"]
+
+    def add_portal(self, name):
+        name = name.strip()
+        if not name:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO portals (name) VALUES (?)", (name,))
+            conn.commit()
+
+    def delete_portal(self, name):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM portals WHERE name = ?", (name.strip(),))
+            conn.commit()
+
+    # --- Applications CRUD ---
+    def add_application(self, company, role, date_applied, status, portal="LinkedIn", applied_email="", notes=""):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO applications (company, role, date_applied, status, notes) VALUES (?, ?, ?, ?, ?)",
-                (company.strip(), role.strip(), date_applied.strip(), status, notes.strip())
+                """INSERT INTO applications 
+                   (company, role, date_applied, status, portal, applied_email, notes) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (company.strip(), role.strip(), date_applied.strip(), status, portal.strip(), applied_email.strip(), notes.strip())
             )
             conn.commit()
 

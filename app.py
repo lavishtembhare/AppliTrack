@@ -1,3 +1,5 @@
+import os
+import ctypes
 import customtkinter as ctk
 from tkinter import messagebox
 
@@ -7,15 +9,30 @@ from analytics import AnalyticsView
 from applications import ApplicationHistoryView
 from sidebar import SidebarView
 
+# --- Ensure Windows Taskbar displays the custom icon instead of Python's default ---
+try:
+    myappid = 'applitrack.careertracker.desktop.1.0'
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+except Exception:
+    pass
+
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class JobTrackerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Job Tracker - Application & Career Pipeline")
-        self.geometry("1180x750")
-        self.minsize(1020, 680)
+        self.title("AppliTrack — Career & Job Application Pipeline")
+        self.geometry("1200x780")
+        self.minsize(1050, 700)
+
+        # --- Set Custom App Icon ---
+        icon_path = os.path.join(os.path.dirname(__file__), "app_icon.ico")
+        if os.path.exists(icon_path):
+            self.iconbitmap(icon_path)
+
+        # Base background
+        self.configure(fg_color="#0b0f19")
 
         self.db = DatabaseManager()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -23,7 +40,7 @@ class JobTrackerApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # 1. Sidebar (Form & Actions)
+        # 1. Left Sidebar
         self.sidebar = SidebarView(
             self, self.db,
             on_add_callback=lambda highlight_new=False: self.refresh_ui(highlight_new=highlight_new)
@@ -31,22 +48,28 @@ class JobTrackerApp(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky="nsew")
 
         # 2. Main Workspace
-        self.main_content = ctk.CTkFrame(self, fg_color="#0f172a")
-        self.main_content.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+        self.main_content = ctk.CTkFrame(self, fg_color="#0f172a", corner_radius=0)
+        self.main_content.grid(row=0, column=1, sticky="nsew", padx=(1, 0), pady=0)
         self.main_content.grid_columnconfigure(0, weight=1)
         self.main_content.grid_rowconfigure(2, weight=1)
 
+        # Padding wrapper inside main workspace
+        wrapper = ctk.CTkFrame(self.main_content, fg_color="transparent")
+        wrapper.pack(fill="both", expand=True, padx=16, pady=16)
+        wrapper.grid_columnconfigure(0, weight=1)
+        wrapper.grid_rowconfigure(2, weight=1)
+
         # Top: 4 Metric Cards
-        self.metrics_view = MetricCardsView(self.main_content)
+        self.metrics_view = MetricCardsView(wrapper)
         self.metrics_view.grid(row=0, column=0, sticky="ew", pady=(0, 12))
 
-        # Middle: Matplotlib Donut Chart
-        self.analytics_view = AnalyticsView(self.main_content)
+        # Middle: Matplotlib Analytics (Donut + Funnel)
+        self.analytics_view = AnalyticsView(wrapper)
         self.analytics_view.grid(row=1, column=0, sticky="nsew", pady=(0, 12))
 
-        # Bottom: Filter Tabs & Scrollable Application Cards
+        # Bottom: Search, Status Filter & Cards
         self.history_view = ApplicationHistoryView(
-            self.main_content,
+            wrapper,
             on_delete_callback=self.delete_record,
             on_status_change_callback=self.change_status,
             on_clear_all_callback=self.clear_all_records
