@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 
 class DatabaseManager:
-    """Handles SQLite storage for job applications, portals, and settings."""
+    """Handles SQLite storage for job applications, portals, emails, and settings."""
     def __init__(self, db_path="applitrack.db"):
         self.db_path = db_path
         self.init_db()
@@ -28,7 +28,7 @@ class DatabaseManager:
                 )
             """)
 
-            # Portals Table (User can add / delete)
+            # Portals Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS portals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,13 +36,13 @@ class DatabaseManager:
                 )
             """)
 
-            # Automatic Schema Migration (for existing databases)
-            cursor.execute("PRAGMA table_info(applications)")
-            existing_cols = [col[1] for col in cursor.fetchall()]
-            if "portal" not in existing_cols:
-                cursor.execute("ALTER TABLE applications ADD COLUMN portal TEXT DEFAULT 'LinkedIn'")
-            if "applied_email" not in existing_cols:
-                cursor.execute("ALTER TABLE applications ADD COLUMN applied_email TEXT DEFAULT ''")
+            # Emails Table (User can add / delete)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS emails (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL
+                )
+            """)
 
             # Default Portals
             cursor.execute("SELECT COUNT(*) FROM portals")
@@ -50,6 +50,13 @@ class DatabaseManager:
                 defaults = ["LinkedIn", "Career Portal", "Indeed", "Glassdoor", "Wellfound", "Referral", "Cold Email", "Other"]
                 for p in defaults:
                     cursor.execute("INSERT OR IGNORE INTO portals (name) VALUES (?)", (p,))
+
+            # Default Emails
+            cursor.execute("SELECT COUNT(*) FROM emails")
+            if cursor.fetchone()[0] == 0:
+                default_emails = ["primary.work@gmail.com", "career.applicant@outlook.com"]
+                for em in default_emails:
+                    cursor.execute("INSERT OR IGNORE INTO emails (email) VALUES (?)", (em,))
 
             conn.commit()
 
@@ -74,6 +81,29 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM portals WHERE name = ?", (name.strip(),))
+            conn.commit()
+
+    # --- Email Management ---
+    def get_emails(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT email FROM emails ORDER BY email ASC")
+            rows = cursor.fetchall()
+            return [r[0] for r in rows] if rows else []
+
+    def add_email(self, email_str):
+        email_str = email_str.strip()
+        if not email_str:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO emails (email) VALUES (?)", (email_str,))
+            conn.commit()
+
+    def delete_email(self, email_str):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM emails WHERE email = ?", (email_str.strip(),))
             conn.commit()
 
     # --- Applications CRUD ---

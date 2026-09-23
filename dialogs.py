@@ -98,3 +98,106 @@ class ManagePortalsDialog(ctk.CTkToplevel):
             self.db.delete_portal(portal_name)
             self.load_portals_list()
             self.on_portals_changed()
+
+
+class ManageEmailsDialog(ctk.CTkToplevel):
+    def __init__(self, parent, db, on_emails_changed):
+        super().__init__(parent)
+        self.db = db
+        self.on_emails_changed = on_emails_changed
+        self.email_row_widgets = []
+
+        self.title("Manage Application Emails")
+        self.geometry("420x480")
+        self.resizable(False, False)
+        self.configure(fg_color="#0b0f19")
+        self.grab_set()
+
+        ctk.CTkLabel(
+            self, text="✉️ Application Emails", 
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#f8fafc"
+        ).pack(pady=(18, 4))
+
+        ctk.CTkLabel(
+            self, text="Manage the email accounts you use to apply for jobs.",
+            font=ctk.CTkFont(size=11),
+            text_color="#94a3b8"
+        ).pack(pady=(0, 14))
+
+        add_frame = ctk.CTkFrame(self, fg_color="transparent")
+        add_frame.pack(fill="x", padx=20, pady=(0, 12))
+
+        self.new_email_entry = ctk.CTkEntry(
+            add_frame, placeholder_text="e.g. name.work@gmail.com",
+            fg_color="#1e293b", border_color="#334155"
+        )
+        self.new_email_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        ctk.CTkButton(
+            add_frame, text="+ Add", width=70,
+            fg_color="#6366f1", hover_color="#4f46e5",
+            font=ctk.CTkFont(weight="bold"),
+            command=self.add_email_action
+        ).pack(side="right")
+
+        self.scroll_area = ctk.CTkScrollableFrame(
+            self, height=270, fg_color="#1e293b", 
+            border_width=1, border_color="#334155", corner_radius=10
+        )
+        self.scroll_area.pack(fill="both", expand=True, padx=20, pady=(0, 16))
+
+        self.load_emails_list()
+
+    def load_emails_list(self):
+        for w in self.email_row_widgets:
+            try:
+                w.destroy()
+            except Exception:
+                pass
+        self.email_row_widgets.clear()
+
+        emails = self.db.get_emails()
+        if not emails:
+            lbl = ctk.CTkLabel(self.scroll_area, text="No emails saved. Add one above.", text_color="#64748b")
+            lbl.pack(pady=20)
+            self.email_row_widgets.append(lbl)
+            return
+
+        for email in emails:
+            row = ctk.CTkFrame(self.scroll_area, fg_color="#0f172a", corner_radius=6)
+            row.pack(fill="x", pady=3, padx=4)
+            self.email_row_widgets.append(row)
+
+            ctk.CTkLabel(
+                row, text=f"✉️ {email}",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#f8fafc"
+            ).pack(side="left", padx=12, pady=6)
+
+            del_btn = ctk.CTkButton(
+                row, text="🗑️", width=28, height=26,
+                fg_color="#334155", hover_color="#ef4444",
+                command=lambda e=email: self.delete_email_action(e)
+            )
+            del_btn.pack(side="right", padx=8, pady=4)
+
+    def add_email_action(self):
+        email_str = self.new_email_entry.get().strip()
+        if not email_str:
+            messagebox.showwarning("Warning", "Email address cannot be empty.")
+            return
+        if "@" not in email_str or "." not in email_str:
+            messagebox.showwarning("Warning", "Please enter a valid email address.")
+            return
+
+        self.db.add_email(email_str)
+        self.new_email_entry.delete(0, "end")
+        self.load_emails_list()
+        self.on_emails_changed(new_email=email_str)
+
+    def delete_email_action(self, email_str):
+        if messagebox.askyesno("Confirm Delete", f"Remove '{email_str}' from your saved emails?"):
+            self.db.delete_email(email_str)
+            self.load_emails_list()
+            self.on_emails_changed()
