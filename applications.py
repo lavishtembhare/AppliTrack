@@ -11,77 +11,141 @@ STATUS_THEMES = {
 
 class ApplicationHistoryView(ctk.CTkFrame):
     def __init__(self, parent, on_delete_callback, on_status_change_callback, on_clear_all_callback):
-        super().__init__(parent, corner_radius=12, fg_color="#11131e", border_width=1, border_color="#1e2235")
+        super().__init__(parent, fg_color="transparent")
         self.on_delete_callback = on_delete_callback
         self.on_status_change_callback = on_status_change_callback
         self.on_clear_all_callback = on_clear_all_callback
+
         self.current_filter = "All"
         self.search_term = ""
+        self.sort_by = "Date Applied"
+        self.sort_direction = "Newest First"
         self.raw_df = None
         self.row_cards = []
 
         self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # 1. Header Bar
-        header_bar = ctk.CTkFrame(self, fg_color="transparent")
-        header_bar.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 6))
-        header_bar.grid_columnconfigure(1, weight=1)
+        # ----------------- SECTION 1: HEADER & CONTROLS -----------------
+        control_deck = ctk.CTkFrame(
+            self, fg_color="#11131e", corner_radius=14,
+            border_width=1, border_color="#1e2235"
+        )
+        control_deck.grid(row=0, column=0, sticky="ew", padx=30, pady=(25, 12))
+        control_deck.grid_columnconfigure(1, weight=1)
+
+        # Title & Count Badge
+        header_left = ctk.CTkFrame(control_deck, fg_color="transparent")
+        header_left.grid(row=0, column=0, padx=20, pady=(16, 12), sticky="w")
 
         ctk.CTkLabel(
-            header_bar, text="⚡ PIPELINE REPOSITORY",
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            header_left, text="📂 PIPELINE REPOSITORY",
+            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
             text_color="#f8fafc"
-        ).grid(row=0, column=0, sticky="w")
+        ).pack(side="left")
 
-        # Monospace Search
-        self.search_entry = ctk.CTkEntry(
-            header_bar,
-            placeholder_text="// query company, role, portal...",
-            height=32,
-            fg_color="#0a0b12",
-            border_color="#1e2235",
-            font=ctk.CTkFont(family="Consolas", size=11)
+        self.count_badge = ctk.CTkLabel(
+            header_left, text="[00 Tracks]",
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            text_color="#00f0ff"
         )
-        self.search_entry.grid(row=0, column=1, sticky="ew", padx=(20, 15))
-        self.search_entry.bind("<KeyRelease>", self._on_search_changed)
+        self.count_badge.pack(side="left", padx=10)
 
+        # Purge Button
         ctk.CTkButton(
-            header_bar, text="Purge", width=68, height=28,
+            control_deck, text="Purge Repository", width=120, height=32,
             font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
             fg_color="#380b15", hover_color="#540f1f", text_color="#f43f5e",
             border_width=1, border_color="#540f1f",
             command=self._handle_clear_all
-        ).grid(row=0, column=2, sticky="e")
+        ).grid(row=0, column=2, padx=20, pady=(16, 12), sticky="e")
 
-        # 2. Filter Tabs
+        # Search Bar + Sort Dropdowns Row
+        filter_bar = ctk.CTkFrame(control_deck, fg_color="transparent")
+        filter_bar.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=(0, 16))
+        filter_bar.grid_columnconfigure(0, weight=1)
+
+        # Search Input
+        self.search_entry = ctk.CTkEntry(
+            filter_bar,
+            placeholder_text="// Search company, role, portal, email, or notes...",
+            height=38,
+            fg_color="#0a0b12",
+            border_color="#1e2235",
+            font=ctk.CTkFont(family="Consolas", size=11)
+        )
+        self.search_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        self.search_entry.bind("<KeyRelease>", self._on_search_changed)
+
+        # Sort By Field Selector
+        ctk.CTkLabel(filter_bar, text="Sort by:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#94a3b8").grid(row=0, column=1, padx=(0, 6))
+        self.sort_field_menu = ctk.CTkOptionMenu(
+            filter_bar,
+            values=["Date Applied", "Company", "Role", "Status"],
+            width=130, height=36,
+            fg_color="#0a0b12", button_color="#1e2235",
+            font=ctk.CTkFont(family="Consolas", size=11),
+            command=self._on_sort_field_changed
+        )
+        self.sort_field_menu.set("Date Applied")
+        self.sort_field_menu.grid(row=0, column=2, padx=(0, 8))
+
+        # Sort Direction Toggle
+        self.sort_dir_menu = ctk.CTkOptionMenu(
+            filter_bar,
+            values=["Newest First", "Oldest First"],
+            width=135, height=36,
+            fg_color="#0a0b12", button_color="#1e2235",
+            font=ctk.CTkFont(family="Consolas", size=11),
+            command=self._on_sort_dir_changed
+        )
+        self.sort_dir_menu.set("Newest First")
+        self.sort_dir_menu.grid(row=0, column=3)
+
+        # ----------------- SECTION 2: STATUS FILTER BUTTONS -----------------
         self.filter_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.filter_frame.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
+        self.filter_frame.grid(row=1, column=0, sticky="ew", padx=30, pady=(0, 10))
 
         self.filter_buttons = {}
         for cat in ["All", "Applied", "Interview", "Offer", "Rejected"]:
             btn = ctk.CTkButton(
                 self.filter_frame,
                 text=cat,
-                height=26,
-                font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
-                fg_color="#6366f1" if cat == "All" else "#0a0b12",
+                height=30,
+                font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+                fg_color="#6366f1" if cat == "All" else "#11131e",
                 hover_color="#4f46e5",
-                text_color="#f8fafc" if cat == "All" else "#94a3b8",
+                text_color="#ffffff" if cat == "All" else "#94a3b8",
                 border_width=1,
-                border_color="#2b3149" if cat != "All" else "#6366f1",
-                corner_radius=6,
+                border_color="#6366f1" if cat == "All" else "#1e2235",
+                corner_radius=8,
                 command=lambda c=cat: self.apply_filter(c)
             )
-            btn.pack(side="left", padx=(0, 6))
+            btn.pack(side="left", padx=(0, 8))
             self.filter_buttons[cat] = btn
 
-        # 3. Scrollable List
+        # ----------------- SECTION 3: SCROLLABLE LIST -----------------
         self.scroll_area = ctk.CTkScrollableFrame(self, fg_color="transparent", corner_radius=0)
-        self.scroll_area.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        self.scroll_area.grid(row=2, column=0, sticky="nsew", padx=25, pady=(0, 15))
 
     def _on_search_changed(self, event):
         self.search_term = self.search_entry.get().strip().lower()
+        self.render_rows()
+
+    def _on_sort_field_changed(self, field_val):
+        self.sort_by = field_val
+        if field_val in ["Company", "Role", "Status"]:
+            self.sort_dir_menu.configure(values=["A to Z", "Z to A"])
+            self.sort_dir_menu.set("A to Z")
+            self.sort_direction = "A to Z"
+        else:
+            self.sort_dir_menu.configure(values=["Newest First", "Oldest First"])
+            self.sort_dir_menu.set("Newest First")
+            self.sort_direction = "Newest First"
+        self.render_rows()
+
+    def _on_sort_dir_changed(self, dir_val):
+        self.sort_direction = dir_val
         self.render_rows()
 
     def apply_filter(self, selected_filter):
@@ -89,15 +153,15 @@ class ApplicationHistoryView(ctk.CTkFrame):
         for cat, btn in self.filter_buttons.items():
             is_active = (cat == selected_filter)
             btn.configure(
-                fg_color="#6366f1" if is_active else "#0a0b12",
+                fg_color="#6366f1" if is_active else "#11131e",
                 text_color="#ffffff" if is_active else "#94a3b8",
-                border_color="#6366f1" if is_active else "#2b3149"
+                border_color="#6366f1" if is_active else "#1e2235"
             )
         self.render_rows()
 
     def _handle_clear_all(self):
         if not self.row_cards:
-            messagebox.showinfo("Purge", "No applications to purge.")
+            messagebox.showinfo("Purge", "No applications in repository.")
             return
 
         confirm = messagebox.askyesno(
@@ -120,19 +184,27 @@ class ApplicationHistoryView(ctk.CTkFrame):
         self.row_cards.clear()
 
         if self.raw_df is None or self.raw_df.empty:
-            lbl = ctk.CTkLabel(self.scroll_area, text="// NO RECORD ENTRIES REGISTERED", font=ctk.CTkFont(family="Consolas", size=11), text_color="#475569")
-            lbl.pack(pady=35)
+            self.count_badge.configure(text="[00 Tracks]")
+            lbl = ctk.CTkLabel(self.scroll_area, text="// NO RECORD ENTRIES REGISTERED", font=ctk.CTkFont(family="Consolas", size=12), text_color="#475569")
+            lbl.pack(pady=40)
             self.row_cards.append(lbl)
             return
 
+        total_cnt = len(self.raw_df)
+        self.count_badge.configure(text=f"[{total_cnt:02d} Tracks]")
+
+        # Update button badges with dynamic counts
         for cat, btn in self.filter_buttons.items():
-            cnt = len(self.raw_df) if cat == "All" else len(self.raw_df[self.raw_df["status"] == cat])
+            cnt = total_cnt if cat == "All" else len(self.raw_df[self.raw_df["status"] == cat])
             btn.configure(text=f"{cat} [{cnt:02d}]")
 
         df = self.raw_df.copy()
+
+        # 1. Status Filter
         if self.current_filter != "All":
             df = df[df["status"] == self.current_filter]
 
+        # 2. Text Search Filter
         if self.search_term:
             df = df[
                 df["company"].astype(str).str.lower().str.contains(self.search_term, na=False) |
@@ -143,11 +215,23 @@ class ApplicationHistoryView(ctk.CTkFrame):
             ]
 
         if df.empty:
-            lbl = ctk.CTkLabel(self.scroll_area, text="// NO MATCHES LOCATED IN QUERY", font=ctk.CTkFont(family="Consolas", size=11), text_color="#475569")
-            lbl.pack(pady=25)
+            lbl = ctk.CTkLabel(self.scroll_area, text="// NO MATCHES LOCATED IN QUERY", font=ctk.CTkFont(family="Consolas", size=12), text_color="#475569")
+            lbl.pack(pady=35)
             self.row_cards.append(lbl)
             return
 
+        # 3. Dynamic Sorting
+        ascending = self.sort_direction in ["Oldest First", "A to Z"]
+        col_target = {
+            "Date Applied": "date_applied",
+            "Company": "company",
+            "Role": "role",
+            "Status": "status"
+        }.get(self.sort_by, "date_applied")
+
+        df = df.sort_values(by=[col_target, "id"], ascending=[ascending, ascending])
+
+        # 4. Render Row Cards
         for idx, row in df.reset_index(drop=True).iterrows():
             is_newest = (idx == 0 and highlight_new)
             status_val = row["status"]
@@ -164,17 +248,17 @@ class ApplicationHistoryView(ctk.CTkFrame):
             self.row_cards.append(row_card)
 
             left_col = ctk.CTkFrame(row_card, fg_color="transparent")
-            left_col.pack(side="left", padx=14, pady=10)
+            left_col.pack(side="left", padx=16, pady=12)
 
             # Monospace Avatar
             initial = row['company'][:2].upper() if row['company'] else "AP"
             avatar = ctk.CTkLabel(
-                left_col, text=initial, width=38, height=38,
+                left_col, text=initial, width=42, height=42,
                 corner_radius=8, fg_color="#141724",
-                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                 text_color="#00f0ff"
             )
-            avatar.pack(side="left", padx=(0, 12))
+            avatar.pack(side="left", padx=(0, 14))
 
             info_box = ctk.CTkFrame(left_col, fg_color="transparent")
             info_box.pack(side="left")
@@ -185,19 +269,20 @@ class ApplicationHistoryView(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 info_box, text=title_text,
-                font=ctk.CTkFont(size=13, weight="bold"),
+                font=ctk.CTkFont(size=14, weight="bold"),
                 text_color="#f8fafc"
             ).pack(anchor="w")
 
-            # Tech metadata line
-            portal_val = row.get("portal", "Direct")
+            # Metadata
+            portal_val = row.get("portal", "")
+            portal_str = portal_val if portal_val else "Direct"
             email_val = row.get("applied_email", "")
 
-            meta_parts = [f"DATE: {row['date_applied']}", f"PORTAL: {portal_val}"]
+            meta_parts = [f"DATE: {row['date_applied']}", f"CONDUIT: {portal_str}"]
             if email_val:
                 meta_parts.append(f"ACC: {email_val}")
             if row.get("notes"):
-                meta_parts.append(f"REF: {row['notes']}")
+                meta_parts.append(f"NOTES: {row['notes']}")
 
             ctk.CTkLabel(
                 info_box,
@@ -207,13 +292,13 @@ class ApplicationHistoryView(ctk.CTkFrame):
             ).pack(anchor="w")
 
             right_col = ctk.CTkFrame(row_card, fg_color="transparent")
-            right_col.pack(side="right", padx=12, pady=10)
+            right_col.pack(side="right", padx=14, pady=12)
 
+            # Status Option Menu
             status_menu = ctk.CTkOptionMenu(
                 right_col,
                 values=["Applied", "Interview", "Offer", "Rejected"],
-                width=115,
-                height=28,
+                width=120, height=30,
                 fg_color=theme["bg"],
                 text_color=theme["text"],
                 font=ctk.CTkFont(family="Consolas", weight="bold", size=11),
@@ -222,8 +307,9 @@ class ApplicationHistoryView(ctk.CTkFrame):
             status_menu.set(status_val)
             status_menu.pack(side="left", padx=(0, 10))
 
+            # Delete Button
             del_btn = ctk.CTkButton(
-                right_col, text="✕", width=28, height=28,
+                right_col, text="✕", width=30, height=30,
                 fg_color="#181c2b", hover_color="#ef4444",
                 text_color="#94a3b8",
                 font=ctk.CTkFont(weight="bold"),

@@ -6,7 +6,7 @@ class SidebarView(ctk.CTkFrame):
         self.on_navigate = on_navigate
         self.nav_buttons = {}
 
-        self.grid_rowconfigure(5, weight=1)
+        self.grid_rowconfigure(6, weight=1)
 
         # Tech Brand Header
         header_box = ctk.CTkFrame(self, fg_color="transparent")
@@ -24,9 +24,10 @@ class SidebarView(ctk.CTkFrame):
             text_color="#64748b"
         ).pack(anchor="w")
 
-        # Nav Buttons with geeky tags
+        # 4 Primary Navigation Items
         nav_items = [
             ("dashboard", "⚡  Dashboard"),
+            ("applications", "📑  Applications"),
             ("add_entry", "➕  Log Application"),
             ("settings", "⚙️  System Config")
         ]
@@ -51,7 +52,7 @@ class SidebarView(ctk.CTkFrame):
 
         # Footer Status Tag
         status_card = ctk.CTkFrame(self, fg_color="#0e111a", corner_radius=8, border_width=1, border_color="#1a1e2e")
-        status_card.grid(row=6, column=0, padx=14, pady=16, sticky="ew")
+        status_card.grid(row=7, column=0, padx=14, pady=16, sticky="ew")
 
         ctk.CTkLabel(
             status_card, text="● ENGINE ENCRYPTED",
