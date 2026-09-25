@@ -47,6 +47,10 @@ class JobTrackerApp(ctk.CTk):
         self.db = DatabaseManager()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        # Dirty flags for lazy loading (prevents background lag)
+        self.dirty_views = {"dashboard": True, "applications": True}
+        self.current_view_key = "dashboard"
+
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -60,7 +64,7 @@ class JobTrackerApp(ctk.CTk):
         self.main_container.grid_columnconfigure(0, weight=1)
         self.main_container.grid_rowconfigure(0, weight=1)
 
-        # ----------------- VIEW 1: DASHBOARD VIEW -----------------
+        # VIEW 1: DASHBOARD
         self.dashboard_view = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.dashboard_view.grid_columnconfigure(0, weight=1)
 
@@ -74,7 +78,7 @@ class JobTrackerApp(ctk.CTk):
         self.analytics_view = AnalyticsView(dash_padding)
         self.analytics_view.pack(fill="both", expand=True)
 
-        # ----------------- VIEW 2: DEDICATED APPLICATIONS TAB -----------------
+        # VIEW 2: APPLICATIONS REPOSITORY
         self.applications_view = ApplicationHistoryView(
             self.main_container,
             on_delete_callback=self.delete_record,
@@ -82,13 +86,13 @@ class JobTrackerApp(ctk.CTk):
             on_clear_all_callback=self.clear_all_records
         )
 
-        # ----------------- VIEW 3: DATA ENTRY TAB -----------------
+        # VIEW 3: DATA ENTRY TAB
         self.entry_view = EntryView(
             self.main_container, self.db,
             on_application_saved=self.handle_application_saved
         )
 
-        # ----------------- VIEW 4: SETTINGS & CONFIG TAB -----------------
+        # VIEW 4: SETTINGS TAB
         self.settings_view = SettingsView(
             self.main_container, self.db,
             on_change_callback=self.on_settings_updated
@@ -106,56 +110,77 @@ class JobTrackerApp(ctk.CTk):
         self.bind("<Control-Key-2>", lambda e: self.navigate_hotkey("applications"))
         self.bind("<Control-Key-3>", lambda e: self.navigate_hotkey("add_entry"))
         self.bind("<Control-Key-4>", lambda e: self.navigate_hotkey("settings"))
-        self.bind("<F5>", lambda e: self.refresh_all())
-        self.bind("<Control-r>", lambda e: self.refresh_all())
+        self.bind("<F5>", lambda e: self.force_refresh_current())
 
-        # Start on dashboard
         self.show_view("dashboard")
-        self.refresh_all()
 
     def navigate_hotkey(self, view_key: str):
         self.sidebar.set_active(view_key)
         self.show_view(view_key)
 
     def show_view(self, view_key: str):
+        self.current_view_key = view_key
         for k, view in self.views.items():
             if k == view_key:
                 view.grid(row=0, column=0, sticky="nsew")
             else:
                 view.grid_forget()
 
-        if view_key == "add_entry":
+        # Lazy Render: Only render the view that is now visible
+        if view_key == "dashboard" and self.dirty_views["dashboard"]:
+            df = self.db.get_all_applications()
+            self.metrics_view.update_metrics(df)
+            self.analytics_view.render_charts(df)
+            self.dirty_views["dashboard"] = False
+
+        elif view_key == "applications" and self.dirty_views["applications"]:
+            df = self.db.get_all_applications()
+            self.applications_view.render_list(df)
+            self.dirty_views["applications"] = False
+
+        elif view_key == "add_entry":
             self.entry_view.refresh_dropdowns()
-        elif view_key in ["dashboard", "applications"]:
-            self.refresh_all()
 
     def handle_application_saved(self):
-        self.refresh_all(highlight_new=True)
-        self.sidebar.set_active("applications")
-        self.show_view("applications")
+        """Called when a job is logged: marks caches dirty but stays on current form."""
+        self.dirty_views["dashboard"] = True
+        self.dirty_views["applications"] = True
+        # Stays on entry form; no redirect
 
     def on_settings_updated(self):
+        self.dirty_views["dashboard"] = True
+        self.dirty_views["applications"] = True
         self.entry_view.refresh_dropdowns()
-        self.refresh_all()
 
     def delete_record(self, app_id: int):
-        if messagebox.askyesno("Purge Record", "Purge this opportunity from encrypted local storage?"):
+        if messagebox.askyesno("Purge Record", "Purge this opportunity from local storage?"):
             self.db.delete_application(app_id)
-            self.refresh_all(highlight_new=False)
+            self.dirty_views["dashboard"] = True
+            df = self.db.get_all_applications()
+            self.applications_view.render_list(df)
+            self.dirty_views["applications"] = False
 
     def change_status(self, app_id: int, new_status: str):
         self.db.update_status(app_id, new_status)
-        self.refresh_all(highlight_new=False)
+        self.dirty_views["dashboard"] = True
+        df = self.db.get_all_applications()
+        self.applications_view.render_list(df)
+        self.dirty_views["applications"] = False
 
     def clear_all_records(self):
         self.db.clear_all()
-        self.refresh_all(highlight_new=False)
-
-    def refresh_all(self, highlight_new: bool = False):
+        self.dirty_views["dashboard"] = True
         df = self.db.get_all_applications()
-        self.metrics_view.update_metrics(df)
-        self.analytics_view.render_charts(df)
-        self.applications_view.render_list(df, highlight_new=highlight_new)
+        self.applications_view.render_list(df)
+        self.dirty_views["applications"] = False
+
+    def force_refresh_current(self):
+        df = self.db.get_all_applications()
+        if self.current_view_key == "dashboard":
+            self.metrics_view.update_metrics(df)
+            self.analytics_view.render_charts(df)
+        elif self.current_view_key == "applications":
+            self.applications_view.render_list(df)
 
     def on_close(self):
         try:

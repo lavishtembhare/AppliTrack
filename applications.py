@@ -22,6 +22,7 @@ class ApplicationHistoryView(ctk.CTkFrame):
         self.sort_direction = "Newest First"
         self.raw_df = None
         self.row_cards = []
+        self._search_debounce_job = None
 
         self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -72,7 +73,7 @@ class ApplicationHistoryView(ctk.CTkFrame):
             font=ctk.CTkFont(size=12)
         )
         self.search_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
-        self.search_entry.bind("<KeyRelease>", self._on_search_changed)
+        self.search_entry.bind("<KeyRelease>", self._on_search_keyrelease)
 
         ctk.CTkLabel(filter_bar, text="Sort by:", font=ctk.CTkFont(size=11, weight="bold"), text_color="#94a3b8").grid(row=0, column=1, padx=(0, 6))
         self.sort_field_menu = ctk.CTkOptionMenu(
@@ -117,11 +118,17 @@ class ApplicationHistoryView(ctk.CTkFrame):
             btn.pack(side="left", padx=(0, 8))
             self.filter_buttons[cat] = btn
 
-        # Scrollable Records List
+        # Scroll Area
         self.scroll_area = ctk.CTkScrollableFrame(self, fg_color="transparent", corner_radius=0)
         self.scroll_area.grid(row=2, column=0, sticky="nsew", padx=25, pady=(0, 15))
 
-    def _on_search_changed(self, event):
+    def _on_search_keyrelease(self, event):
+        # 180ms debounce so rapid typing does not trigger rapid frame reconstructions
+        if self._search_debounce_job:
+            self.after_cancel(self._search_debounce_job)
+        self._search_debounce_job = self.after(180, self._apply_search)
+
+    def _apply_search(self):
         self.search_term = self.search_entry.get().strip().lower()
         self.render_rows()
 
@@ -164,11 +171,11 @@ class ApplicationHistoryView(ctk.CTkFrame):
         if confirm:
             self.on_clear_all_callback()
 
-    def render_list(self, df: pd.DataFrame, highlight_new=False):
+    def render_list(self, df: pd.DataFrame):
         self.raw_df = df
-        self.render_rows(highlight_new=highlight_new)
+        self.render_rows()
 
-    def render_rows(self, highlight_new=False):
+    def render_rows(self):
         for card in self.row_cards:
             try:
                 card.destroy()
@@ -220,16 +227,15 @@ class ApplicationHistoryView(ctk.CTkFrame):
 
         df = df.sort_values(by=[col_target, "id"], ascending=[ascending, ascending])
 
-        for idx, row in df.reset_index(drop=True).iterrows():
-            is_newest = (idx == 0 and highlight_new)
+        for _, row in df.reset_index(drop=True).iterrows():
             status_val = row["status"]
             theme = STATUS_THEMES.get(status_val, {"bg": "#11131e", "text": "#94a3b8", "border": "#1e2235"})
 
             row_card = ctk.CTkFrame(
                 self.scroll_area,
-                fg_color="#0d0f18" if not is_newest else "#16192e",
+                fg_color="#0d0f18",
                 border_width=1,
-                border_color="#6366f1" if is_newest else "#1c2032",
+                border_color="#1c2032",
                 corner_radius=10
             )
             row_card.pack(fill="x", pady=4, padx=5)
@@ -250,12 +256,8 @@ class ApplicationHistoryView(ctk.CTkFrame):
             info_box = ctk.CTkFrame(left_col, fg_color="transparent")
             info_box.pack(side="left")
 
-            title_text = f"{row['company']}  —  {row['role']}"
-            if is_newest:
-                title_text = f"✨ JUST LOGGED  •  {title_text}"
-
             ctk.CTkLabel(
-                info_box, text=title_text,
+                info_box, text=f"{row['company']}  —  {row['role']}",
                 font=ctk.CTkFont(size=14, weight="bold"),
                 text_color="#f8fafc"
             ).pack(anchor="w")
