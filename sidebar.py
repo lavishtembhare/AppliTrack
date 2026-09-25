@@ -19,8 +19,8 @@ class SidebarView(ctk.CTkFrame):
         ).pack(anchor="w")
 
         ctk.CTkLabel(
-            header_box, text="// CAREER OS • EXECUTIVE",
-            font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+            header_box, text="Executive Career OS",
+            font=ctk.CTkFont(size=10),
             text_color="#64748b"
         ).pack(anchor="w")
 
