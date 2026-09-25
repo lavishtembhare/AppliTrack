@@ -8,7 +8,6 @@ class EntryView(ctk.CTkScrollableFrame):
         self.db = db
         self.on_application_saved = on_application_saved
 
-        # Header Title
         title_box = ctk.CTkFrame(self, fg_color="transparent")
         title_box.pack(fill="x", padx=40, pady=(30, 20))
 
@@ -24,7 +23,6 @@ class EntryView(ctk.CTkScrollableFrame):
             text_color="#64748b"
         ).pack(anchor="w")
 
-        # Form Surface
         self.form_card = ctk.CTkFrame(
             self, fg_color="#11131e", corner_radius=14, 
             border_width=1, border_color="#1e2235"
@@ -107,7 +105,7 @@ class EntryView(ctk.CTkScrollableFrame):
         self.notes_entry.delete(0, "end")
         self.status_menu.set("Applied")
         self.set_today()
-        self.refresh_dropdowns()
+        self.company_entry.focus()
 
     def refresh_dropdowns(self):
         saved_portal = self.db.get_setting("default_portal", "").strip()
@@ -160,7 +158,7 @@ class EntryView(ctk.CTkScrollableFrame):
         )
 
         self.clear_inputs()
-        self.submit_btn.configure(text="✔ Logged!", fg_color="#00f5a0", text_color="#000000")
-        self.after(1000, lambda: self.submit_btn.configure(text="⚡ Save Application", fg_color="#6366f1", text_color="#ffffff"))
+        self.submit_btn.configure(text="✔ Saved!", fg_color="#00f5a0", text_color="#000000")
+        self.after(800, lambda: self.submit_btn.configure(text="⚡ Save Application", fg_color="#6366f1", text_color="#ffffff"))
 
         self.on_application_saved()

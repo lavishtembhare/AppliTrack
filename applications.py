@@ -1,3 +1,5 @@
+import re
+from difflib import SequenceMatcher
 import customtkinter as ctk
 import pandas as pd
 from tkinter import messagebox
@@ -8,6 +10,85 @@ STATUS_THEMES = {
     "Offer": {"bg": "#022915", "text": "#00f5a0", "border": "#055c32"},
     "Rejected": {"bg": "#26060e", "text": "#fb7185", "border": "#5c1023"},
 }
+
+PAGE_SIZE = 25
+
+
+def fuzzy_search_and_rank(df: pd.DataFrame, query: str) -> pd.DataFrame:
+    """
+    Intelligent cross-field search algorithm:
+    1. Multi-token omnibar matching across Company, Role, Conduit, Email, Notes, Date.
+    2. Fuzzy typo-tolerance using Levenshtein-style ratio matching.
+    3. Weighted relevance scoring (Exact > Prefix > Substring > Fuzzy).
+    """
+    clean_query = query.strip().lower()
+    if not clean_query or df.empty:
+        return df
+
+    tokens = clean_query.split()
+    scored_results = []
+
+    for idx, row in df.iterrows():
+        comp = str(row.get("company", "")).lower()
+        role = str(row.get("role", "")).lower()
+        portal = str(row.get("portal", "")).lower()
+        email = str(row.get("applied_email", "")).lower()
+        notes = str(row.get("notes", "")).lower()
+        date_str = str(row.get("date_applied", "")).lower()
+
+        combined_text = f"{comp} {role} {portal} {email} {notes} {date_str}"
+        words_in_row = re.findall(r"\w+", combined_text)
+
+        score = 0
+        all_tokens_matched = True
+
+        for token in tokens:
+            token_matched = False
+
+            # 1. Exact field match (Highest priority)
+            if token == comp or token == role:
+                score += 80
+                token_matched = True
+            # 2. Prefix match (Company / Role starts with token)
+            elif comp.startswith(token) or role.startswith(token):
+                score += 50
+                token_matched = True
+            # 3. Substring match anywhere in the record
+            elif token in combined_text:
+                score += 30
+                token_matched = True
+            else:
+                # 4. Fuzzy match against individual words (Typo tolerance)
+                token_len = len(token)
+                if token_len >= 3:
+                    for word in words_in_row:
+                        # Quick length delta filter before expensive SequenceMatcher
+                        if abs(len(word) - token_len) <= 2:
+                            ratio = SequenceMatcher(None, token, word).ratio()
+                            if ratio >= 0.75:
+                                score += int(ratio * 20)
+                                token_matched = True
+                                break
+
+            if not token_matched:
+                all_tokens_matched = False
+                break
+
+        if all_tokens_matched and score > 0:
+            # Bonus points if the entire phrase appears verbatim
+            if clean_query in combined_text:
+                score += 40
+            scored_results.append((idx, score))
+
+    if not scored_results:
+        return df.iloc[0:0]
+
+    # Rank rows by highest match score first
+    scored_results.sort(key=lambda item: item[1], reverse=True)
+    sorted_indices = [item[0] for item in scored_results]
+
+    return df.loc[sorted_indices]
+
 
 class ApplicationHistoryView(ctk.CTkFrame):
     def __init__(self, parent, on_delete_callback, on_status_change_callback, on_clear_all_callback):
@@ -21,8 +102,8 @@ class ApplicationHistoryView(ctk.CTkFrame):
         self.sort_by = "Date Applied"
         self.sort_direction = "Newest First"
         self.raw_df = None
-        self.row_cards = []
-        self._search_debounce_job = None
+        self.visible_limit = PAGE_SIZE
+        self._debounce_timer = None
 
         self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -66,7 +147,7 @@ class ApplicationHistoryView(ctk.CTkFrame):
 
         self.search_entry = ctk.CTkEntry(
             filter_bar,
-            placeholder_text="🔍 Search company, role, conduit, email, or notes...",
+            placeholder_text="🔍 Smart search (e.g. 'Google Senior', 'Stripe Remote', 'Indeed')...",
             height=38,
             fg_color="#0a0b12",
             border_color="#1e2235",
@@ -123,13 +204,13 @@ class ApplicationHistoryView(ctk.CTkFrame):
         self.scroll_area.grid(row=2, column=0, sticky="nsew", padx=25, pady=(0, 15))
 
     def _on_search_keyrelease(self, event):
-        # 180ms debounce so rapid typing does not trigger rapid frame reconstructions
-        if self._search_debounce_job:
-            self.after_cancel(self._search_debounce_job)
-        self._search_debounce_job = self.after(180, self._apply_search)
+        if self._debounce_timer:
+            self.after_cancel(self._debounce_timer)
+        self._debounce_timer = self.after(140, self._apply_search)
 
     def _apply_search(self):
         self.search_term = self.search_entry.get().strip().lower()
+        self.visible_limit = PAGE_SIZE
         self.render_rows()
 
     def _on_sort_field_changed(self, field_val):
@@ -142,10 +223,12 @@ class ApplicationHistoryView(ctk.CTkFrame):
             self.sort_dir_menu.configure(values=["Newest First", "Oldest First"])
             self.sort_dir_menu.set("Newest First")
             self.sort_direction = "Newest First"
+        self.visible_limit = PAGE_SIZE
         self.render_rows()
 
     def _on_sort_dir_changed(self, dir_val):
         self.sort_direction = dir_val
+        self.visible_limit = PAGE_SIZE
         self.render_rows()
 
     def apply_filter(self, selected_filter):
@@ -157,10 +240,11 @@ class ApplicationHistoryView(ctk.CTkFrame):
                 text_color="#ffffff" if is_active else "#94a3b8",
                 border_color="#6366f1" if is_active else "#1e2235"
             )
+        self.visible_limit = PAGE_SIZE
         self.render_rows()
 
     def _handle_clear_all(self):
-        if not self.row_cards:
+        if self.raw_df is None or self.raw_df.empty:
             messagebox.showinfo("Purge", "No applications in repository.")
             return
 
@@ -173,21 +257,21 @@ class ApplicationHistoryView(ctk.CTkFrame):
 
     def render_list(self, df: pd.DataFrame):
         self.raw_df = df
+        self.visible_limit = PAGE_SIZE
+        self.render_rows()
+
+    def load_more(self):
+        self.visible_limit += PAGE_SIZE
         self.render_rows()
 
     def render_rows(self):
-        for card in self.row_cards:
-            try:
-                card.destroy()
-            except Exception:
-                pass
-        self.row_cards.clear()
+        for widget in self.scroll_area.winfo_children():
+            widget.destroy()
 
         if self.raw_df is None or self.raw_df.empty:
             self.count_badge.configure(text="[00 Tracks]")
             lbl = ctk.CTkLabel(self.scroll_area, text="No application records found.", font=ctk.CTkFont(size=13), text_color="#475569")
             lbl.pack(pady=40)
-            self.row_cards.append(lbl)
             return
 
         total_cnt = len(self.raw_df)
@@ -199,35 +283,38 @@ class ApplicationHistoryView(ctk.CTkFrame):
 
         df = self.raw_df.copy()
 
+        # Step 1: Category Filter
         if self.current_filter != "All":
             df = df[df["status"] == self.current_filter]
 
+        # Step 2: Intelligent Multi-Token & Fuzzy Search
         if self.search_term:
-            df = df[
-                df["company"].astype(str).str.lower().str.contains(self.search_term, na=False) |
-                df["role"].astype(str).str.lower().str.contains(self.search_term, na=False) |
-                df["portal"].astype(str).str.lower().str.contains(self.search_term, na=False) |
-                df["applied_email"].astype(str).str.lower().str.contains(self.search_term, na=False) |
-                df["notes"].astype(str).str.lower().str.contains(self.search_term, na=False)
-            ]
+            df = fuzzy_search_and_rank(df, self.search_term)
+        else:
+            # Step 3: Standard Field Sorting (When not searching)
+            ascending = self.sort_direction in ["Oldest First", "A to Z"]
+            col_target = {
+                "Date Applied": "date_applied",
+                "Company": "company",
+                "Role": "role",
+                "Status": "status"
+            }.get(self.sort_by, "date_applied")
+            df = df.sort_values(by=[col_target, "id"], ascending=[ascending, ascending])
 
         if df.empty:
-            lbl = ctk.CTkLabel(self.scroll_area, text="No matching records found for this query.", font=ctk.CTkFont(size=13), text_color="#475569")
+            lbl = ctk.CTkLabel(
+                self.scroll_area,
+                text="No matching records found. (Try typing partial names or keywords)",
+                font=ctk.CTkFont(size=13),
+                text_color="#475569"
+            )
             lbl.pack(pady=35)
-            self.row_cards.append(lbl)
             return
 
-        ascending = self.sort_direction in ["Oldest First", "A to Z"]
-        col_target = {
-            "Date Applied": "date_applied",
-            "Company": "company",
-            "Role": "role",
-            "Status": "status"
-        }.get(self.sort_by, "date_applied")
+        matched_total = len(df)
+        visible_df = df.iloc[:self.visible_limit]
 
-        df = df.sort_values(by=[col_target, "id"], ascending=[ascending, ascending])
-
-        for _, row in df.reset_index(drop=True).iterrows():
+        for _, row in visible_df.iterrows():
             status_val = row["status"]
             theme = STATUS_THEMES.get(status_val, {"bg": "#11131e", "text": "#94a3b8", "border": "#1e2235"})
 
@@ -239,7 +326,6 @@ class ApplicationHistoryView(ctk.CTkFrame):
                 corner_radius=10
             )
             row_card.pack(fill="x", pady=4, padx=5)
-            self.row_cards.append(row_card)
 
             left_col = ctk.CTkFrame(row_card, fg_color="transparent")
             left_col.pack(side="left", padx=16, pady=12)
@@ -302,3 +388,17 @@ class ApplicationHistoryView(ctk.CTkFrame):
                 command=lambda aid=row["id"]: self.on_delete_callback(aid)
             )
             del_btn.pack(side="left")
+
+        # Load More Button
+        if matched_total > self.visible_limit:
+            remaining = matched_total - self.visible_limit
+            load_btn = ctk.CTkButton(
+                self.scroll_area,
+                text=f"⬇️ Load More Records ({remaining} remaining)",
+                height=34,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                fg_color="#141724", hover_color="#1e2235", text_color="#38bdf8",
+                border_width=1, border_color="#1e2235",
+                command=self.load_more
+            )
+            load_btn.pack(fill="x", pady=12, padx=20)

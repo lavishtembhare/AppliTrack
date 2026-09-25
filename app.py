@@ -14,7 +14,7 @@ from entry_view import EntryView
 from settings_view import SettingsView
 
 try:
-    myappid = 'applitrack.careeros.desktop.2.4'
+    myappid = 'applitrack.careeros.desktop.2.5'
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 except Exception:
     pass
@@ -47,24 +47,23 @@ class JobTrackerApp(ctk.CTk):
         self.db = DatabaseManager()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Dirty flags for lazy loading (prevents background lag)
         self.dirty_views = {"dashboard": True, "applications": True}
         self.current_view_key = "dashboard"
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # 1. Navigation Sidebar
+        # 1. Sidebar Navigation
         self.sidebar = SidebarView(self, on_navigate=self.show_view)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
 
-        # 2. Main Container Host
+        # 2. Main Content Container
         self.main_container = ctk.CTkFrame(self, fg_color="#0c0d15", corner_radius=0)
         self.main_container.grid(row=0, column=1, sticky="nsew")
         self.main_container.grid_columnconfigure(0, weight=1)
         self.main_container.grid_rowconfigure(0, weight=1)
 
-        # VIEW 1: DASHBOARD
+        # Dashboard View
         self.dashboard_view = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.dashboard_view.grid_columnconfigure(0, weight=1)
 
@@ -78,7 +77,7 @@ class JobTrackerApp(ctk.CTk):
         self.analytics_view = AnalyticsView(dash_padding)
         self.analytics_view.pack(fill="both", expand=True)
 
-        # VIEW 2: APPLICATIONS REPOSITORY
+        # Applications Repository View
         self.applications_view = ApplicationHistoryView(
             self.main_container,
             on_delete_callback=self.delete_record,
@@ -86,13 +85,13 @@ class JobTrackerApp(ctk.CTk):
             on_clear_all_callback=self.clear_all_records
         )
 
-        # VIEW 3: DATA ENTRY TAB
+        # Entry View
         self.entry_view = EntryView(
             self.main_container, self.db,
             on_application_saved=self.handle_application_saved
         )
 
-        # VIEW 4: SETTINGS TAB
+        # Settings View
         self.settings_view = SettingsView(
             self.main_container, self.db,
             on_change_callback=self.on_settings_updated
@@ -105,7 +104,6 @@ class JobTrackerApp(ctk.CTk):
             "settings": self.settings_view
         }
 
-        # Keyboard Navigation Shortcuts
         self.bind("<Control-Key-1>", lambda e: self.navigate_hotkey("dashboard"))
         self.bind("<Control-Key-2>", lambda e: self.navigate_hotkey("applications"))
         self.bind("<Control-Key-3>", lambda e: self.navigate_hotkey("add_entry"))
@@ -126,7 +124,7 @@ class JobTrackerApp(ctk.CTk):
             else:
                 view.grid_forget()
 
-        # Lazy Render: Only render the view that is now visible
+        # Render only when a dirty tab becomes visible
         if view_key == "dashboard" and self.dirty_views["dashboard"]:
             df = self.db.get_all_applications()
             self.metrics_view.update_metrics(df)
@@ -142,10 +140,9 @@ class JobTrackerApp(ctk.CTk):
             self.entry_view.refresh_dropdowns()
 
     def handle_application_saved(self):
-        """Called when a job is logged: marks caches dirty but stays on current form."""
+        # Keep caches dirty; do not execute background renders or redirects
         self.dirty_views["dashboard"] = True
         self.dirty_views["applications"] = True
-        # Stays on entry form; no redirect
 
     def on_settings_updated(self):
         self.dirty_views["dashboard"] = True
